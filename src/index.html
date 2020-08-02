@@ -22,13 +22,13 @@
 
         <ul v-show="!isConectadoSala">
             <li v-for="(sala, index) in arrSalas" :key="index">
-                <span> <b>{{sala.adminUserName}} - </b> </span>  {{sala.idSala}} <br>
-                <button @click="entrarSala(sala.idSala)">Entrar na sala</button>
+                <span> <b>{{sala.adminUserName}} - </b> </span>  {{sala.hashSala}} <br>
+                <button @click="entrarSala(sala.hashSala)">Entrar na sala</button>
             </li>
         </ul>
 
         <div  v-show="isConectadoSala">
-            Dentro da sala {{idSalaConectado}}
+            Dentro da sala {{hashSalaConectado}}
 
             <ul>
                 <li v-for="(jogador, index) in arrJogadoresSala" :key="index">

@@ -2,7 +2,7 @@ new Vue({
     el: "#app-vue",
     data: {
         // socketId: null,
-        idSalaConectado: null,
+        hashSalaConectado: null,
         arrSalas: [],
         arrJogadoresSala: [],
         username: null,
@@ -10,7 +10,7 @@ new Vue({
 
     computed: {
         isConectadoSala() {
-            return this.idSalaConectado !== null;
+            return this.hashSalaConectado !== null;
         }
     },
 
@@ -31,8 +31,8 @@ new Vue({
                 this.arrJogadoresSala = arrJogadoresSala;
             });
 
-            this.socketIO.on('salaConectada', idSala => {
-                this.idSalaConectado = idSala;
+            this.socketIO.on('salaConectada', hashSala => {
+                this.hashSalaConectado = hashSala;
             });
         },
 
@@ -47,20 +47,20 @@ new Vue({
             });
         },
 
-        entrarSala(idSala) {
+        entrarSala(hashSala) {
             if (this.username == null || this.username == "") {
                 return false;
             }
 
             this.socketIO.emit('entrarSala', {
-                idSala: idSala,
+                hashSala: hashSala,
                 username: this.username
             });
         },
 
         sairDaSala() {
             this.socketIO.emit('sairSala');
-            this.idSalaConectado = null;
+            this.hashSalaConectado = null;
         }
     },
 

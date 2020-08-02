@@ -17,7 +17,7 @@ app.use('/', (req, res) => {
 let arrSalas = [];
 let arrJogadoresESala = [];
 
-function gerarIdSala() {
+function gerarHashSala() {
     var result = '';
     var characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     var charactersLength = characters.length;
@@ -32,12 +32,12 @@ function getSalaJogador(idJogador) {
         return jogador.idJogador == idJogador
     });
 
-    return sala == null ? null : sala.idSala;
+    return sala == null ? null : sala.hashSala;
 }
 
-function getJogadoresDaSala(idSala) {
+function getJogadoresDaSala(hashSala) {
     return arrJogadoresESala.filter(sala => {
-        return sala.idSala == idSala;
+        return sala.hashSala == hashSala;
     })
 }
 
@@ -46,38 +46,38 @@ io.on('connection', socket => {
     io.emit('salasAtualizadas', arrSalas);
 
     //Função para adicionar no arrJogadoresESala. Responsavel pelo controle para saber qual jogador está em qual sala.
-    function adicionarJogadorESala(idSala, idJogador, username) {
+    function adicionarJogadorESala(hashSala, idJogador, username) {
         arrJogadoresESala.push({
             idJogador: idJogador,
             username: username,
-            idSala: idSala
+            hashSala: hashSala
         });
 
-        socket.join(idSala);
+        socket.join(hashSala);
 
         // enviar para todos os clientes em uma sala específica
-        io.in(idSala).emit('jogadoresAtualizado', getJogadoresDaSala(idSala));
+        io.in(hashSala).emit('jogadoresAtualizado', getJogadoresDaSala(hashSala));
     }
 
     function removerJogadorSala(idJogador) {
         let index = null;
-        let idSala = null;
+        let hashSala = null;
 
         arrJogadoresESala.map((jogador, key) => {
             if (jogador.idJogador == idJogador) {
                 index = key;
-                idSala = jogador.idSala;
+                hashSala = jogador.hashSala;
             }
         });
 
         if (index !== null) {
-            
+
             socket.leave(getSalaJogador(idJogador));
 
             arrJogadoresESala.splice(index, 1);
             // enviar para todos os clientes em uma sala específica
-            io.in(idSala).emit('jogadoresAtualizado', getJogadoresDaSala(idSala));
-            alterarAdminDaSala(idJogador, idSala);
+            io.in(hashSala).emit('jogadoresAtualizado', getJogadoresDaSala(hashSala));
+            alterarAdminDaSala(idJogador, hashSala);
         }
     };
 
@@ -88,7 +88,7 @@ io.on('connection', socket => {
 
         arrSalas.map((sala, key) => {
             if (sala.admin == idJogador) {
-                let jogadores = getJogadoresDaSala(sala.idSala);
+                let jogadores = getJogadoresDaSala(sala.hashSala);
 
                 //Se não tem mais ninguém na sala, remove ela.
                 removerSala = jogadores.length == 0;
@@ -110,10 +110,10 @@ io.on('connection', socket => {
 
     socket.on('criarSala', data => {
         //Entra com o usuário na sala selecionada;
-        let idSala = gerarIdSala();
+        let hashSala = gerarHashSala();
 
         let objSala = {
-            idSala: idSala,
+            hashSala: hashSala,
             quantidadeJogadores: 1,
             isSalaIniciada: false,
             admin: socket.id,
@@ -122,15 +122,15 @@ io.on('connection', socket => {
 
         arrSalas.push(objSala);
 
-        adicionarJogadorESala(idSala, socket.id, data.username);
+        adicionarJogadorESala(hashSala, socket.id, data.username);
 
         io.emit('salasAtualizadas', arrSalas);
-        socket.emit('salaConectada', idSala);
+        socket.emit('salaConectada', hashSala);
     });
 
     socket.on('entrarSala', data => {
-        adicionarJogadorESala(data.idSala, socket.id, data.username);
-        socket.emit('salaConectada', data.idSala);
+        adicionarJogadorESala(data.hashSala, socket.id, data.username);
+        socket.emit('salaConectada', data.hashSala);
     });
 
     socket.on('sairSala', () => {
