@@ -37,7 +37,7 @@ function getSalaJogador(idJogador) {
 
 function getJogadoresDaSala(idSala) {
     return arrJogadoresESala.filter(sala => {
-        sala.idSala == idSala;
+        return sala.idSala == idSala;
     })
 }
 
@@ -49,8 +49,11 @@ io.on('connection', socket => {
     function adicionarJogadorESala(idSala, idJogador, username) {
         arrJogadoresESala.push({
             idJogador: idJogador,
+            username: username,
             idSala: idSala
         });
+
+        socket.join(idSala);
 
         // enviar para todos os clientes em uma sala específica
         io.in(idSala).emit('jogadoresAtualizado', getJogadoresDaSala(idSala));
@@ -68,16 +71,46 @@ io.on('connection', socket => {
         });
 
         if (index !== null) {
+            
+            socket.leave(getSalaJogador(idJogador));
+
             arrJogadoresESala.splice(index, 1);
             // enviar para todos os clientes em uma sala específica
             io.in(idSala).emit('jogadoresAtualizado', getJogadoresDaSala(idSala));
+            alterarAdminDaSala(idJogador, idSala);
         }
     };
+
+    //Função que troca o admin da sala, cao o jogador que saiu for o admin da sala.
+    function alterarAdminDaSala(idJogador) {
+        let removerSala = false;
+        let index = null;
+
+        arrSalas.map((sala, key) => {
+            if (sala.admin == idJogador) {
+                let jogadores = getJogadoresDaSala(sala.idSala);
+
+                //Se não tem mais ninguém na sala, remove ela.
+                removerSala = jogadores.length == 0;
+                index = key;
+
+                if (!removerSala) {
+                    sala.admin = jogadores[0].idJogador;
+                    sala.adminUserName = jogadores[0].username;
+                }
+            }
+        });
+
+        if (removerSala) {
+            arrSalas.splice(index, 1);
+        }
+
+        io.emit('salasAtualizadas', arrSalas);
+    }
 
     socket.on('criarSala', data => {
         //Entra com o usuário na sala selecionada;
         let idSala = gerarIdSala();
-        socket.join(idSala);
 
         let objSala = {
             idSala: idSala,
@@ -92,22 +125,21 @@ io.on('connection', socket => {
         adicionarJogadorESala(idSala, socket.id, data.username);
 
         io.emit('salasAtualizadas', arrSalas);
-        socket.emit('idSalaCriada', idSala);
+        socket.emit('salaConectada', idSala);
     });
 
     socket.on('entrarSala', data => {
         adicionarJogadorESala(data.idSala, socket.id, data.username);
+        socket.emit('salaConectada', data.idSala);
     });
 
     socket.on('sairSala', () => {
         removerJogadorSala(socket.id);
     });
-});
 
-io.on('disconnect', socket => {
-    //TODO quando for admin da sala que desconectar ou sair, remover a sala e retirar da sala dos os jogadores.
-    removerJogadorSala(socket.id);
-    socket.leave(getSalaJogador(socket.id));
+    socket.on('disconnect', () => {
+        removerJogadorSala(socket.id);
+    });
 });
 
 server.listen(3000);

@@ -28,18 +28,39 @@ new Vue({
             });
 
             this.socketIO.on('jogadoresAtualizado', arrJogadoresSala => {
-                this.arrJogadoresSala = arrJogadoresSala
+                this.arrJogadoresSala = arrJogadoresSala;
             });
 
-            this.socketIO.on('idSalaCriada', idSala => {
+            this.socketIO.on('salaConectada', idSala => {
                 this.idSalaConectado = idSala;
             });
         },
 
         criarSala() {
+
+            if (this.username == null || this.username == "") {
+                return false;
+            }
+
             this.socketIO.emit('criarSala', {
                 username: this.username
             });
+        },
+
+        entrarSala(idSala) {
+            if (this.username == null || this.username == "") {
+                return false;
+            }
+
+            this.socketIO.emit('entrarSala', {
+                idSala: idSala,
+                username: this.username
+            });
+        },
+
+        sairDaSala() {
+            this.socketIO.emit('sairSala');
+            this.idSalaConectado = null;
         }
     },
 
