@@ -41,6 +41,16 @@ function getJogadoresDaSala(hashSala) {
     })
 }
 
+function atualizarQuantidadeJogadores(hashSala) {
+    arrSalas.map(sala => {
+        if (sala.hashSala == hashSala) {
+            sala.quantidadeJogadores = getJogadoresDaSala(hashSala).length
+        }
+    });
+
+    io.emit('salasAtualizadas', arrSalas);
+}
+
 io.on('connection', socket => {
     socket.emit('socketId', socket.id);
     io.emit('salasAtualizadas', arrSalas);
@@ -52,6 +62,8 @@ io.on('connection', socket => {
             username: username,
             hashSala: hashSala
         });
+
+        atualizarQuantidadeJogadores(hashSala);
 
         socket.join(hashSala);
 
