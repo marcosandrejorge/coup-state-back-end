@@ -17,7 +17,12 @@ app.use('/', (req, res) => {
 let arrSalas = [];
 let arrJogadores = [];
 let arrAcoesSala = [];
+
+
 let arrCartasJogo = [];
+//O jogo possui 5 personagens básicos e o Inquisidor. 
+//Para jogos com até 6 jogadores são utilizados 3 cópias de cada um dos personagens. 
+//Caso deseje jogar com o Inquisidor, substitua ele pelo Embaixador. Em jogos com 7 ou 8 jogadores, utilize 4 cópias. Em 9 ou 10, 5 cópias dos personagens.
 
 function gerarHashSala() {
     var result = '';
@@ -65,6 +70,41 @@ function getObjJogador(idJogador) {
     })
 }
 
+function isAdmin(idJogador, hashSala) {
+    return arrSalas.filter(sala => {
+        return sala.hashSala == hashSala && sala.admin == idJogador
+    }).length > 0
+}
+
+function alterarStatusSala(hashSala, isSalaIniciada) {
+    arrSalas.map(sala => {
+        if (sala.hashSala == hashSala) {
+            sala.isSalaIniciada = isSalaIniciada
+        }
+    })
+
+    io.emit('salasAtualizadas', arrSalas);
+}
+
+function emitMensagemUsuario(idJogador, mensagem, tipo) {
+    io.to(idJogador).emit('mensagem', {
+        mensagem,
+        tipo
+    });
+}
+
+function isSalaIniciada(hashSala) {
+    return getObjSala(hashSala).isSalaIniciada
+}
+
+function isSalaExiste(hashSala) {
+    return getObjSala(hashSala) !== null
+}
+
+function isExisteVagasSala(hashSala) {
+    return getJogadoresDaSala(hashSala).length < 10
+}
+
 io.on('connection', socket => {
     socket.emit('socketId', socket.id);
     io.emit('salasAtualizadas', arrSalas);
@@ -79,13 +119,26 @@ io.on('connection', socket => {
 
     //Função para adicionar no arrJogadores. Responsavel pelo controle para saber qual jogador está em qual sala.
     function adicionarJogadorESala(hashSala, idJogador, username) {
+
+        if (isSalaIniciada(hashSala) || !isSalaExiste(hashSala) || !isExisteVagasSala(hashSala)) {
+            emitMensagemUsuario(
+                idJogador,
+                'Não é possível conectar a sala',
+                'redirect'
+            );
+            return;
+        }
+
+        //Se encontrar o jogador conectado a alguma sala, para por aqui.
+        if (getHashSalaJogador(idJogador) !== null) return;
+
         arrJogadores.push({
             idJogador: idJogador,
             username: username,
             hashSala: hashSala,
             isBloqueadoJogar: true,
             isJogando: false,
-            qtdMoedas: 0,
+            qtdMoedas: 2,
         });
 
         socket.join(hashSala);
@@ -115,10 +168,11 @@ io.on('connection', socket => {
         }
     };
 
-    //Função que troca o admin da sala, cao o jogador que saiu for o admin da sala.
+    //Função que troca o admin da sala, caso o jogador que saiu for o admin da sala.
     function alterarAdminDaSala(idJogador) {
         let removerSala = false;
         let index = null;
+        let hashSala = null;
 
         arrSalas.map((sala, key) => {
             if (sala.admin == idJogador) {
@@ -131,6 +185,7 @@ io.on('connection', socket => {
                 if (!removerSala) {
                     sala.admin = jogadores[0].idJogador;
                     sala.adminUserName = jogadores[0].username;
+                    hashSala = sala.hashSala
                 }
             }
         });
@@ -140,6 +195,11 @@ io.on('connection', socket => {
         }
 
         io.emit('salasAtualizadas', arrSalas);
+
+        //Se não é para remover a sala, atualiza o objSala de todos os usuários da sala para que recebebam a alteração do admin da sala.
+        if (!removerSala) {
+            io.in(hashSala).emit('salaConectada', getObjSala(hashSala));
+        }
     }
 
     socket.on('criarSala', data => {
@@ -156,9 +216,16 @@ io.on('connection', socket => {
 
         arrSalas.push(objSala);
 
-        adicionarJogadorESala(hashSala, socket.id, data.username);
-
         io.emit('salasAtualizadas', arrSalas);
+        socket.emit('salaCriada', hashSala);
+    });
+
+    socket.on('iniciarPartida', () => {
+        //Recupera o hash da sala que o usuário está conectado.
+        let hashSala = getHashSalaJogador(socket.id);
+        //Verifica se o usuário é mesmo o admin da sala
+        if (!isAdmin(socket.id, hashSala)) return;
+        alterarStatusSala(hashSala, true);
     });
 
     socket.on('entrarSala', data => {
