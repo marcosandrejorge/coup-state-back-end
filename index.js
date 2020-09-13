@@ -18,6 +18,33 @@ let arrSalas = [];
 let arrJogadores = [];
 let arrAcoesSala = [];
 
+let arrTiposCartas = [
+    {
+        idCarta: 1,
+        idJogador: null,
+        sn_ativa: true
+    },
+    {
+        idCarta: 2,
+        idJogador: null,
+        sn_ativa: true
+    },
+    {
+        idCarta: 3,
+        idJogador: null,
+        sn_ativa: true
+    },
+    {
+        idCarta: 4,
+        idJogador: null,
+        sn_ativa: true
+    },
+    {
+        idCarta: 5,
+        idJogador: null,
+        sn_ativa: true
+    },
+];
 
 let arrCartasJogo = [];
 //O jogo possui 5 personagens básicos e o Inquisidor. 
@@ -84,6 +111,7 @@ function alterarStatusSala(hashSala, isSalaIniciada) {
     })
 
     io.emit('salasAtualizadas', arrSalas);
+    io.in(hashSala).emit('salaConectada', getObjSala(hashSala));
 }
 
 function emitMensagemUsuario(idJogador, mensagem, tipo) {
@@ -103,6 +131,87 @@ function isSalaExiste(hashSala) {
 
 function isExisteVagasSala(hashSala) {
     return getJogadoresDaSala(hashSala).length < 10
+}
+
+function distribuirCartas(hashSala, quantidadeCadaCarta) {
+    let arrCartas = [];
+    arrCartasJogo = [];
+    for (let index = 0; index < quantidadeCadaCarta; index++) {
+        arrCartas = [...arrTiposCartas, ...arrCartas];
+    }
+
+    arrCartas.map(carta => {
+        arrCartasJogo.push({ ...carta})
+    });
+
+    let jogadoresSala = getJogadoresDaSala(hashSala);
+
+    //Percorre cada jogador da sala e dá 2 cartas pra cada.
+    jogadoresSala.map(jogador => {
+        for (let index = 0; index < 2;) {
+            let cartasDisponiveis = arrCartasJogo.filter( carta => carta.idJogador == null);
+            let numeroCarta = Math.floor(Math.random() * cartasDisponiveis.length);
+
+            if (arrCartasJogo[numeroCarta].idJogador == null) {
+                arrCartasJogo[numeroCarta].idJogador = jogador.idJogador;
+                index++;
+            }
+        }
+    });
+
+    atualizarCartasDeTodos(hashSala);
+}
+
+function atualizarCartasDeTodos(hashSala) {
+    let jogadoresSala = getJogadoresDaSala(hashSala);
+
+    jogadoresSala.map(jogador => {
+        atualizarCartaJogador(jogador.idJogador); 
+    });
+}
+
+function atualizarCartaJogador(idJogador) {
+    let cartasJogador = arrCartasJogo.filter(carta => {
+        return carta.idJogador == idJogador
+    });
+
+    io.to(idJogador).emit('minhasCartas', cartasJogador);
+}
+
+function iniciarPartida(hashSala) {
+    let objSala = getObjSala(hashSala);
+
+    let quantidadeJogadores = objSala.quantidadeJogadores;
+
+    if (quantidadeJogadores <= 6) {
+        distribuirCartas(hashSala, 3);
+        return;
+    }
+
+    if (quantidadeJogadores > 6 && quantidadeJogadores <= 8) {
+        distribuirCartas(hashSala, 4);
+        return;
+    }
+
+    if (quantidadeJogadores > 8) {
+        distribuirCartas(hashSala, 5);
+        return;
+    }
+}
+
+function adicionarAcaoSala(acao, hashSala) {
+    arrAcoesSala.push({
+        acao,
+        hashSala
+    });
+
+    io.in(hashSala).emit('acoesSala', getAcoesSala(hashSala));
+}
+
+function getAcoesSala(hashSala) {
+    return arrAcoesSala.filter(acao => {
+        return acao.hashSala == hashSala
+    }).map(x => x.acao );
 }
 
 io.on('connection', socket => {
@@ -143,17 +252,25 @@ io.on('connection', socket => {
 
         socket.join(hashSala);
         socket.emit('salaConectada', getObjSala(hashSala));
+
+        adicionarAcaoSala(
+            `${username} entrou na sala`,
+            hashSala
+        );
+
         emitJogadores(hashSala);
     }
 
     function removerJogadorSala(idJogador) {
         let index = null;
         let hashSala = null;
+        let username = null;
 
         arrJogadores.map((jogador, key) => {
             if (jogador.idJogador == idJogador) {
                 index = key;
                 hashSala = jogador.hashSala;
+                username = jogador.username;
             }
         });
 
@@ -165,6 +282,11 @@ io.on('connection', socket => {
             // enviar para todos os clientes em uma sala específica
             alterarAdminDaSala(idJogador, hashSala);
             emitJogadores(hashSala);
+
+            adicionarAcaoSala(
+                `${username} saiu da sala`,
+                hashSala
+            );
         }
     };
 
@@ -223,9 +345,18 @@ io.on('connection', socket => {
     socket.on('iniciarPartida', () => {
         //Recupera o hash da sala que o usuário está conectado.
         let hashSala = getHashSalaJogador(socket.id);
-        //Verifica se o usuário é mesmo o admin da sala
-        if (!isAdmin(socket.id, hashSala)) return;
+
+        //Verifica se o usuário é mesmo o admin da sala e se a sala não foi iniciada ainda.
+        if (!isAdmin(socket.id, hashSala) || isSalaIniciada(hashSala)) return;
+
         alterarStatusSala(hashSala, true);
+
+        adicionarAcaoSala(
+            `Partida iniciada`,
+            hashSala
+        );
+
+        iniciarPartida(hashSala);
     });
 
     socket.on('entrarSala', data => {
