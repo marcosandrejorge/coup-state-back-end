@@ -14,9 +14,35 @@ app.use('/', (req, res) => {
     res.render('index.html');
 });
 
+/**
+ * Ações
+ */
+const UMA_MOEDA = 1;
+const AJUDA_EXTERNA = 2;
+const TAXA = 3;
+const ASSASSINAR = 4;
+const EXTORQUIR = 5;
+const DEFENDER = 6;
+const CONTESTAR = 7;
+const GOLPE_ESTADO = 8;
+const ACEITAR = 9;
+const INVESTIGAR = 10;
+const TROCAR_CARTA = 11;
+
+/**
+ * Cartas
+ */
+
+const REI = 1;
+const MAJOR = 2;
+const DAMA = 3;
+const MATADOR = 4;
+const JUIZ = 5;
+
 let arrSalas = [];
 let arrJogadores = [];
 let arrAcoesSala = [];
+let arrSalasJogadorVez = [];
 
 let arrTiposCartas = [
     {
@@ -160,6 +186,7 @@ function distribuirCartas(hashSala, quantidadeCadaCarta) {
     });
 
     atualizarCartasDeTodos(hashSala);
+    atualizarJogadorDaVez(hashSala, null);
 }
 
 function atualizarCartasDeTodos(hashSala) {
@@ -176,6 +203,59 @@ function atualizarCartaJogador(idJogador) {
     });
 
     io.to(idJogador).emit('minhasCartas', cartasJogador);
+}
+
+/**
+ * Verifica qual é o jogador da vez da sala
+ * @param {*} hashSala Sala a ser verifica qual é o jogador da vez
+ * @param {*} idJogador Id do jogador que foi o ultimo a jogar na sala
+ */
+function atualizarJogadorDaVez(hashSala) {
+    //Recupera o ultimo jogador a jogar da sala.
+    let idJogadorUltimoJogar = arrSalasJogadorVez.filter( sala => {
+        return jogador.hashSala == hashSala
+    }).idJogadorVez;
+
+    let jogadorVez = getProximoJogador(hashSala, idJogadorUltimoJogar);
+
+    //Atualiza o array com o jogador da vez
+    arrSalasJogadorVez.map(sala => {
+        sala.idJogadorVez = jogadorVez.idJogador
+    });
+
+    adicionarAcaoSala(
+        `É a vez de ${jogadorVez.username} jogar`,
+        hashSala
+    )
+
+    io.to(jogadorVez.idJogador).emit('suaVezDeJogar');
+}
+
+function getProximoJogador(hashSala, idJogadorUltimoJogar) {
+    let posicaoProximoJogador = null;
+    let jogadoresSala = getJogadoresDaSala(hashSala);
+
+    //Se o idJogadorUltimoJogar é igual a null, quer dizer que é a primeira rodado do jogo.
+    //Primeira rodada, começa pelo primeiro jogador da sala.
+    if (idJogadorUltimoJogar == null) {
+        return jogadoresSala[0];
+    }
+
+    let posicaoUltimoJogador = jogadoresSala.map(x => x.idJogador).indexOf(idJogadorUltimoJogar);
+
+    //Se o ultimo jogador é o ultimo do array, volta pro primeiro.
+    if ((posicaoUltimoJogador + 1) == jogadoresSala.length) {
+        posicaoProximoJogador = 0;
+    } else {
+        posicaoProximoJogador = posicaoUltimoJogador + 1;
+    }
+
+    //Verifica se o jogador ainda está jogando, se não estiver, pula para o proximo.
+    if (!jogadoresSala[posicaoProximoJogador].isJogando) {
+        return getProximoJogador(hashSala, jogadoresSala[posicaoProximoJogador].idJogador);
+    }
+
+    return jogadoresSala[posicaoProximoJogador];
 }
 
 function iniciarPartida(hashSala) {
@@ -245,7 +325,6 @@ io.on('connection', socket => {
             idJogador: idJogador,
             username: username,
             hashSala: hashSala,
-            isBloqueadoJogar: true,
             isJogando: false,
             qtdMoedas: 2,
         });
