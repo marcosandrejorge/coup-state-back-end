@@ -186,7 +186,7 @@ function distribuirCartas(hashSala, quantidadeCadaCarta) {
     });
 
     atualizarCartasDeTodos(hashSala);
-    atualizarJogadorDaVez(hashSala, null);
+    atualizarJogadorDaVez(hashSala);
 }
 
 function atualizarCartasDeTodos(hashSala) {
@@ -213,8 +213,15 @@ function atualizarCartaJogador(idJogador) {
 function atualizarJogadorDaVez(hashSala) {
     //Recupera o ultimo jogador a jogar da sala.
     let idJogadorUltimoJogar = arrSalasJogadorVez.filter( sala => {
-        return jogador.hashSala == hashSala
-    }).idJogadorVez;
+        return sala.hashSala == hashSala
+    });
+
+    //Se idJogadorUltimoJogar é igual a 0, quer dizer que é o primeiro jogador a jogar, logo depois da partida iniciar.
+    if (idJogadorUltimoJogar.length > 0) {
+        idJogadorUltimoJogar = idJogadorUltimoJogar[0].idJogadorVez;
+    } else {
+        idJogadorUltimoJogar = null
+    }
 
     let jogadorVez = getProximoJogador(hashSala, idJogadorUltimoJogar);
 
@@ -226,7 +233,7 @@ function atualizarJogadorDaVez(hashSala) {
     adicionarAcaoSala(
         `É a vez de ${jogadorVez.username} jogar`,
         hashSala
-    )
+    );
 
     io.to(jogadorVez.idJogador).emit('suaVezDeJogar');
 }
@@ -262,6 +269,13 @@ function iniciarPartida(hashSala) {
     let objSala = getObjSala(hashSala);
 
     let quantidadeJogadores = objSala.quantidadeJogadores;
+
+    //Coloca todos jogadores da sala ativos para jogar.
+    arrJogadores.map(jogador => {
+        if (jogador.hashSala == hashSala) {
+            jogador.isJogando = true;
+        }
+    })
 
     if (quantidadeJogadores <= 6) {
         distribuirCartas(hashSala, 3);
@@ -417,6 +431,11 @@ io.on('connection', socket => {
 
         arrSalas.push(objSala);
 
+        arrSalasJogadorVez.push({
+            hashSala: hashSala,
+            idJogadorVez: null
+        });
+
         io.emit('salasAtualizadas', arrSalas);
         socket.emit('salaCriada', hashSala);
     });
@@ -436,6 +455,11 @@ io.on('connection', socket => {
         );
 
         iniciarPartida(hashSala);
+    });
+
+
+    socket.on('acaoRealizar', objAcao => {
+        atualizarJogadorDaVez(getHashSalaJogador(socket.id));
     });
 
     socket.on('entrarSala', data => {
