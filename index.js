@@ -39,6 +39,13 @@ const DAMA = 3;
 const MATADOR = 4;
 const JUIZ = 5;
 
+const arrAcoesEmOutrosJogadores = [
+    ASSASSINAR,
+    EXTORQUIR,
+    GOLPE_ESTADO,
+    INVESTIGAR
+]
+
 let arrSalas = [];
 let arrJogadores = [];
 let arrAcoesSala = [];
@@ -99,6 +106,44 @@ function getObjSala(hashSala) {
     return arrSalas.find(sala => {
         return sala.hashSala == hashSala
     })
+}
+
+function getDescricaoAcao(idAcao) {
+    switch (idAcao) {
+        case ASSASSINAR:
+            return 'Ele quer te assassinar'
+            break;
+        case EXTORQUIR:
+            return 'Ele quer extorquir 2 moedas suas'
+            break;
+        case GOLPE_ESTADO:
+            return 'Ele quer te matar com GOLPE DE ESTADO'
+            break;
+        case INVESTIGAR:
+            return 'Ele quer investigar suas cartas'
+            break;
+    }
+}
+
+function getNomeAcao(idAcao) {
+    switch (idAcao) {
+        case ASSASSINAR:
+            return 'ASSASSINAR'
+            break;
+        case EXTORQUIR:
+            return 'EXTORQUIR'
+            break;
+        case GOLPE_ESTADO:
+            return 'GOLPE DE ESTADO'
+            break;
+        case INVESTIGAR:
+            return 'INVESTIGAR'
+            break;
+    }
+}
+
+function getPodeDefenderDaAcao(idAcao) {
+    return idAcao == GOLPE_ESTADO ? false : true;
 }
 
 function getJogadoresDaSala(hashSala) {
@@ -276,6 +321,8 @@ function iniciarPartida(hashSala) {
             jogador.isJogando = true;
         }
     })
+
+    io.in(hashSala).emit('jogadoresAtualizado', getJogadoresDaSala(hashSala));
 
     if (quantidadeJogadores <= 6) {
         distribuirCartas(hashSala, 3);
@@ -457,9 +504,36 @@ io.on('connection', socket => {
         iniciarPartida(hashSala);
     });
 
-
     socket.on('acaoRealizar', objAcao => {
-        atualizarJogadorDaVez(getHashSalaJogador(socket.id));
+
+        let hashSala = getHashSalaJogador(socket.id);
+
+        //Verifica se a ação escolhida é para outro jogador, se for, envia uma notificação para o jogador aceitar o ataque ou não.
+        if (arrAcoesEmOutrosJogadores.indexOf(objAcao.idAcao) != -1) {
+            //Emit uma notificação pro jogador atacado
+            io.to(objAcao.idJogadorAtacado).emit('ataqueRecebido', {
+                title: `O jogador ${objAcao.usernameQuemJogou} atacou você`,
+                descricaoAcao: getDescricaoAcao(objAcao.idAcao),
+                isPodeSeDefender: getPodeDefenderDaAcao(objAcao.idAcao),//SE FOR GOLPE DE ESTADO NÃO PODE DEFENDER DA ACAO
+                idJogadorQueAtacou: socket.id,
+                usernameQueAtacou: objAcao.usernameQuemJogou,
+                idAcaoRecebida: objAcao.idAcao,
+                isEsconderAcaoDefender: objAcao.idAcao != ASSASSINAR
+            });
+
+            adicionarAcaoSala(
+                `${objAcao.usernameQuemJogou} atacou o jogador ${objAcao.usernameJogadorAtacado} com a ação de: ${getNomeAcao(objAcao.idAcao)}`,
+                hashSala
+            );
+
+            return;
+        }
+
+        atualizarJogadorDaVez(hashSala);
+    });
+
+    socket.on('acaoDefesaRealizar', objAcaoDefesa => {
+        console.log(objAcaoDefesa);
     });
 
     socket.on('entrarSala', data => {
