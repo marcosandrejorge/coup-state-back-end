@@ -152,6 +152,28 @@ function getJogadoresDaSala(hashSala) {
     })
 }
 
+function atualizarJogadoresSala(hashSala) {
+    io.in(hashSala).emit('jogadoresAtualizado', getJogadoresDaSala(hashSala));
+}
+
+function atualizaMoedasJogador(idJogador, moedasAdicionar = 0, moedasSubtrair = 0) {
+    let hashSalaJogador = "";
+    arrJogadores.map(jogador => {
+        if (jogador.idJogador == idJogador) {
+            jogador.qtdMoedas += moedasAdicionar;
+            jogador.qtdMoedas -= moedasSubtrair;
+            hashSalaJogador = jogador.hashSala;
+        }
+    });
+
+    atualizarObjJogador(idJogador);
+    atualizarJogadoresSala(hashSalaJogador);
+}
+
+function atualizarObjJogador(idJogador) {
+    io.to(idJogador).emit('atualizarJogadorLogado', getObjJogador(idJogador));
+}
+
 function atualizarQuantidadeJogadores(hashSala) {
     arrSalas.map(sala => {
         if (sala.hashSala == hashSala) {
@@ -322,7 +344,7 @@ function iniciarPartida(hashSala) {
         }
     })
 
-    io.in(hashSala).emit('jogadoresAtualizado', getJogadoresDaSala(hashSala));
+    atualizarJogadoresSala(hashSala);
 
     if (quantidadeJogadores <= 6) {
         distribuirCartas(hashSala, 3);
@@ -362,7 +384,7 @@ io.on('connection', socket => {
     function emitJogadores(hashSala) {
         // enviar para todos os clientes em uma sala específica
         atualizarQuantidadeJogadores(hashSala);
-        io.in(hashSala).emit('jogadoresAtualizado', getJogadoresDaSala(hashSala));
+        atualizarJogadoresSala(hashSala);
         //Atualiza o jogador que está logado no socket.
         socket.emit('atualizarJogadorLogado', getObjJogador(socket.id))
     }
@@ -508,7 +530,7 @@ io.on('connection', socket => {
 
         let hashSala = getHashSalaJogador(socket.id);
 
-        //Verifica se a ação escolhida é para outro jogador, se for, envia uma notificação para o jogador aceitar o ataque ou não.
+        //Verifica se a ação escolhida é uma ação de ataque, se for, envia uma notificação para o jogador aceitar o ataque ou não.
         if (arrAcoesEmOutrosJogadores.indexOf(objAcao.idAcao) != -1) {
             //Emit uma notificação pro jogador atacado
             io.to(objAcao.idJogadorAtacado).emit('ataqueRecebido', {
@@ -529,11 +551,15 @@ io.on('connection', socket => {
             return;
         }
 
+        if (objAcao.idAcao == UMA_MOEDA) {
+            atualizaMoedasJogador(socket.id, 1);
+        }
+
         atualizarJogadorDaVez(hashSala);
     });
 
     socket.on('acaoDefesaRealizar', objAcaoDefesa => {
-        console.log(objAcaoDefesa);
+        //console.log(objAcaoDefesa);
     });
 
     socket.on('entrarSala', data => {
