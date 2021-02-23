@@ -44,12 +44,24 @@ const arrAcoesEmOutrosJogadores = [
     EXTORQUIR,
     GOLPE_ESTADO,
     INVESTIGAR
+];
+
+const arrAcoesParaAceitar = [
+    AJUDA_EXTERNA,
+    TAXA,
+    TROCAR_CARTA
+];
+
+const arrTiposAceites = [
+    CONTESTAR,
+    ACEITAR
 ]
 
 let arrSalas = [];
 let arrJogadores = [];
 let arrAcoesSala = [];
 let arrSalasJogadorVez = [];
+let arrAcoesASeremAceitas = [];
 
 let arrTiposCartas = [
     {
@@ -139,6 +151,15 @@ function getNomeAcao(idAcao) {
         case INVESTIGAR:
             return 'INVESTIGAR'
             break;
+        case TAXA:
+            return 'TAXA'
+            break;
+        case TROCAR_CARTA:
+            return 'TROCAR CARTA'
+            break;
+        case AJUDA_EXTERNA:
+            return 'AJUDA EXTERNA'
+            break;
     }
 }
 
@@ -214,6 +235,13 @@ function emitMensagemUsuario(idJogador, mensagem, tipo) {
     });
 }
 
+function emitMensagemSala(hashSala, mensagem, tipo = "") {
+    io.in(hashSala).emit('mensagem', {
+        mensagem,
+        tipo
+    });
+}
+
 function isSalaIniciada(hashSala) {
     return getObjSala(hashSala).isSalaIniciada
 }
@@ -262,11 +290,25 @@ function atualizarCartasDeTodos(hashSala) {
     jogadoresSala.map(jogador => {
         atualizarCartaJogador(jogador.idJogador); 
     });
+
+    atualizarJogadoresSala(hashSala);
 }
 
 function atualizarCartaJogador(idJogador) {
     let cartasJogador = arrCartasJogo.filter(carta => {
         return carta.idJogador == idJogador
+    });
+
+    arrJogadores.map(jogador => {
+        if (jogador.idJogador == idJogador) {
+            jogador.arrCartas = [];
+            cartasJogador.map(carta => {
+                jogador.arrCartas.push({
+                    idCarta: carta.sn_ativa ? null : carta.idCarta,
+                    sn_ativa: carta.sn_ativa
+                });
+            });
+        }
     });
 
     io.to(idJogador).emit('minhasCartas', cartasJogador);
@@ -278,6 +320,9 @@ function atualizarCartaJogador(idJogador) {
  * @param {*} idJogador Id do jogador que foi o ultimo a jogar na sala
  */
 function atualizarJogadorDaVez(hashSala) {
+
+    if (!isSalaIniciada(hashSala)) return;
+
     //Recupera o ultimo jogador a jogar da sala.
     let idJogadorUltimoJogar = arrSalasJogadorVez.filter( sala => {
         return sala.hashSala == hashSala
@@ -377,6 +422,186 @@ function getAcoesSala(hashSala) {
     }).map(x => x.acao );
 }
 
+function temMoedasParaJogada(idAcao, idJogador) {
+    let qtdMoedasParaAcao = 0;
+
+    switch (idAcao) {
+        case ASSASSINAR:
+            qtdMoedasParaAcao = 3;
+            break;
+        case GOLPE_ESTADO:
+            qtdMoedasParaAcao = 7;
+            break;
+    }
+
+    return getObjJogador(idJogador).qtdMoedas >= qtdMoedasParaAcao;
+}
+
+/**
+ * Remove da fila de ações a serem aceitas a ação da sala hashSala
+ * @param {*} hashSala 
+ */
+function removerAcaoASerAceita(hashSala) {
+    let indexSala = null;
+
+    arrAcoesASeremAceitas.map((acao, index) => {
+        if (acao.hashSala == hashSala) {
+            indexSala = index;
+        }
+    });
+
+    if (indexSala !== null) {
+        arrAcoesASeremAceitas.splice(indexSala, 1);
+    }
+}
+
+/**
+ * Retorna se a sala em questão tem uma ação pendente para ser aceita
+ * @param {*} hashSala 
+ */
+function existeAcaoASerAceitaSala(hashSala) {
+    return arrAcoesASeremAceitas.filter(acao => {
+        return acao.hashSala == hashSala
+    }).length > 0;
+}
+
+function concluirJogadaPendente(hashSala) {
+    let objJogadaPendente = arrAcoesASeremAceitas.filter(acao => {
+        return acao.hashSala == hashSala
+    })[0];
+
+    if (objJogadaPendente.idAcao == AJUDA_EXTERNA || objJogadaPendente.idAcao == TAXA) {
+
+        adicionarAcaoSala(
+            `${objJogadaPendente.usernameQuemJogou} executou a ação de: ${getNomeAcao(objJogadaPendente.idAcao)}`,
+            hashSala
+        );
+        let qtdMoedas = objJogadaPendente.idAcao == AJUDA_EXTERNA ? 2 : 3;
+        atualizaMoedasJogador(objJogadaPendente.idJogador, qtdMoedas);
+        return;
+    }
+
+    if (objJogadaPendente.idAcao == TROCAR_CARTA) {
+        //TODO IMPLEMENTAR A TROCA DE CARTA
+    }
+}
+
+function aceitarJogada(hashSala) {
+
+    let qtdAceite = 0;
+
+    arrAcoesASeremAceitas.map(acao => {
+        if (acao.hashSala == hashSala) {
+            acao.qtdAceite++;
+            qtdAceite = acao.qtdAceite;
+        }
+    });
+
+    //Verifica se todos já aceitaram a jogada, se todos aceitaram pula para o proximo jogador
+    let qtd_jogadores_sala = getJogadoresDaSala(hashSala).length;
+
+    //Jogada aprovada
+    //qtdAceite sempre vai ter o número de jogadores menos 1 que foi o que executou a ação
+    if (qtd_jogadores_sala == (qtdAceite + 1)) {
+        concluirJogadaPendente(hashSala);
+        removerAcaoASerAceita(hashSala);
+        atualizarJogadorDaVez(hashSala);
+    }
+}
+
+function realizarJogada(objAcao, socket) {
+    let idJogador = socket.id;
+    let hashSala = getHashSalaJogador(idJogador);
+
+    if (!isSalaIniciada(hashSala)) return;
+
+    //Valida se a sala da ação tem uma ação pendente de resposta, se tiver só deixar as ações de ACEITAR e CONTESTAR
+    if (existeAcaoASerAceitaSala(hashSala) && arrTiposAceites.indexOf(objAcao.idAcao) == -1) {
+        return;
+    }
+
+    if (!temMoedasParaJogada(objAcao.idAcao, idJogador)) {
+        atualizarJogadorDaVez(hashSala);
+        return;
+    }
+
+    //Verifica se a ação escolhida é uma ação de ataque, se for, envia uma notificação para o jogador aceitar o ataque ou não.
+    if (arrAcoesEmOutrosJogadores.indexOf(objAcao.idAcao) != -1) {
+        //Emit uma notificação pro jogador atacado
+        io.to(objAcao.idJogadorAtacado).emit('ataqueRecebido', {
+            title: `O jogador ${objAcao.usernameQuemJogou} atacou você`,
+            descricaoAcao: getDescricaoAcao(objAcao.idAcao),
+            idJogadorQueAtacou: idJogador,
+            usernameQueAtacou: objAcao.usernameQuemJogou,
+            idAcaoRecebida: objAcao.idAcao,
+            mostrarAcaoDefesa: getPodeDefenderDaAcao(objAcao.idAcao)
+        });
+
+        adicionarAcaoSala(
+            `${objAcao.usernameQuemJogou} atacou o jogador ${objAcao.usernameJogadorAtacado} com a ação de: ${getNomeAcao(objAcao.idAcao)}`,
+            hashSala
+        );
+
+        return;
+    }
+
+    //Se é uma ação que precisa ser aceita pelos outros jogadores, dá um tempo para aceitarem ou contestarem
+    if (arrAcoesParaAceitar.indexOf(objAcao.idAcao) != -1) {
+        socket.broadcast.to(hashSala).emit('aguardarRespostaJogada', {
+            title: `O jogador ${objAcao.usernameQuemJogou} quer efetuar a jogada de: ${getNomeAcao(objAcao.idAcao)}`,
+            descricaoAcao: getDescricaoAcao(objAcao.idAcao),
+            idJogadorQueJogou: idJogador,
+            usernameQueJogou: objAcao.usernameQuemJogou,
+            idAcaoJogada: objAcao.idAcao,
+            isResponderJogada: true
+        });
+
+        arrAcoesASeremAceitas.push({
+            hashSala: hashSala,
+            idAcao: objAcao.idAcao,
+            idJogador: idJogador,
+            usernameQuemJogou: objAcao.usernameQuemJogou,
+            qtdAceite: 0
+        });
+
+        return;
+    }
+
+    if (objAcao.idAcao == ACEITAR) {
+        aceitarJogada(hashSala);
+        return;
+    }
+
+    if (objAcao.idAcao == UMA_MOEDA) {
+        adicionarAcaoSala(
+            `${objAcao.usernameQuemJogou} executou a ação de: ${getNomeAcao(objAcao.idAcao)}`,
+            hashSala
+        );
+        atualizaMoedasJogador(idJogador, 1);
+    }
+
+    atualizarJogadorDaVez(hashSala);
+};
+
+function verificarFimDeJogo(hashSala) {
+    let jogadoresJogando = getJogadoresDaSala(hashSala).filter(jogador => jogador.isJogando);
+    let jogadorVencedor = null;
+
+    if (jogadoresJogando.length > 1) {
+        return;
+    }
+
+    jogadorVencedor = jogadoresJogando[0];
+
+    alterarStatusSala(hashSala, false);
+
+    emitMensagemSala(
+        hashSala,
+        `VENCEDOR: ${jogadorVencedor.username}`,
+        'fim_de_jogo'
+    );
+}
+
 io.on('connection', socket => {
     socket.emit('socketId', socket.id);
     io.emit('salasAtualizadas', arrSalas);
@@ -386,7 +611,7 @@ io.on('connection', socket => {
         atualizarQuantidadeJogadores(hashSala);
         atualizarJogadoresSala(hashSala);
         //Atualiza o jogador que está logado no socket.
-        socket.emit('atualizarJogadorLogado', getObjJogador(socket.id))
+        socket.emit('atualizarJogadorLogado', getObjJogador(socket.id));
     }
 
     //Função para adicionar no arrJogadores. Responsavel pelo controle para saber qual jogador está em qual sala.
@@ -410,6 +635,7 @@ io.on('connection', socket => {
             hashSala: hashSala,
             isJogando: false,
             qtdMoedas: 2,
+            arrCartas: []
         });
 
         socket.join(hashSala);
@@ -449,6 +675,8 @@ io.on('connection', socket => {
                 `${username} saiu da sala`,
                 hashSala
             );
+
+            verificarFimDeJogo(hashSala);
         }
     };
 
@@ -512,9 +740,10 @@ io.on('connection', socket => {
     socket.on('iniciarPartida', () => {
         //Recupera o hash da sala que o usuário está conectado.
         let hashSala = getHashSalaJogador(socket.id);
+        let qtdJogadores = getJogadoresDaSala(hashSala).length;
 
-        //Verifica se o usuário é mesmo o admin da sala e se a sala não foi iniciada ainda.
-        if (!isAdmin(socket.id, hashSala) || isSalaIniciada(hashSala)) return;
+        //Verifica se o usuário é mesmo o admin da sala, se a sala não foi iniciada ainda ou se tem jogadores o suficientes para jogar
+        if (!isAdmin(socket.id, hashSala) || isSalaIniciada(hashSala) || qtdJogadores == 1) return;
 
         alterarStatusSala(hashSala, true);
 
@@ -527,35 +756,7 @@ io.on('connection', socket => {
     });
 
     socket.on('acaoRealizar', objAcao => {
-
-        let hashSala = getHashSalaJogador(socket.id);
-
-        //Verifica se a ação escolhida é uma ação de ataque, se for, envia uma notificação para o jogador aceitar o ataque ou não.
-        if (arrAcoesEmOutrosJogadores.indexOf(objAcao.idAcao) != -1) {
-            //Emit uma notificação pro jogador atacado
-            io.to(objAcao.idJogadorAtacado).emit('ataqueRecebido', {
-                title: `O jogador ${objAcao.usernameQuemJogou} atacou você`,
-                descricaoAcao: getDescricaoAcao(objAcao.idAcao),
-                isPodeSeDefender: getPodeDefenderDaAcao(objAcao.idAcao),//SE FOR GOLPE DE ESTADO NÃO PODE DEFENDER DA ACAO
-                idJogadorQueAtacou: socket.id,
-                usernameQueAtacou: objAcao.usernameQuemJogou,
-                idAcaoRecebida: objAcao.idAcao,
-                isEsconderAcaoDefender: objAcao.idAcao != ASSASSINAR
-            });
-
-            adicionarAcaoSala(
-                `${objAcao.usernameQuemJogou} atacou o jogador ${objAcao.usernameJogadorAtacado} com a ação de: ${getNomeAcao(objAcao.idAcao)}`,
-                hashSala
-            );
-
-            return;
-        }
-
-        if (objAcao.idAcao == UMA_MOEDA) {
-            atualizaMoedasJogador(socket.id, 1);
-        }
-
-        atualizarJogadorDaVez(hashSala);
+        realizarJogada(objAcao, socket);
     });
 
     socket.on('acaoDefesaRealizar', objAcaoDefesa => {
